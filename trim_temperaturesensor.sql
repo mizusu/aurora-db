@@ -1,17 +1,21 @@
 SELECT CONCAT('=== Trimming run started at ', NOW(), ' ===') AS Info;
 
-SELECT 'Step 1: Creating KeepIds table...' AS Info;
+SELECT CONCAT(NOW(), '(Step 1) Creating KeepIds table...') AS Info;
+
+SET @cutoff := NOW() - INTERVAL 5 MINUTE;
+SELECT CONCAT('Cutoff time: ', @cutoff) AS Info;
 
 CREATE TEMPORARY TABLE KeepIds AS
 SELECT MIN(Id) AS Id
 FROM temperaturesensor
+WHERE CaptureDate < @cutoff
 GROUP BY DATE_FORMAT(CaptureDate, '%Y-%m-%d %H:%i');
 
 CREATE INDEX idx_keep_id ON KeepIds(Id);
 
 SELECT CONCAT(NOW(), ': KeepIds table created') AS Info;
 
-SELECT 'Step 2: Batch deleting old records...' AS Info;
+SELECT CONCAT(NOW(), ': (Step 2) Batch deleting old records...') AS Info;
 
 DELIMITER $$
 
@@ -31,6 +35,7 @@ BEGIN
                 FROM temperaturesensor t
                 LEFT JOIN KeepIds k ON t.Id = k.Id
                 WHERE k.Id IS NULL
+                  AND t.CaptureDate < @cutoff
                 LIMIT 10000
             ) AS batch
         );
@@ -61,7 +66,7 @@ CALL trim_loop();
 
 DROP PROCEDURE trim_loop;
 
-SELECT 'Step 3: Dropping temporary tables...' AS Info;
+SELECT CONCAT(NOW(), ': (Step 3) Dropping temporary tables...') AS Info;
 
 DROP TEMPORARY TABLE IF EXISTS KeepIds;
 
