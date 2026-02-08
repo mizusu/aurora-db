@@ -1,35 +1,68 @@
--- trim_temperaturesensor.sql
+SELECT CONCAT('=== Trimming run started at ', NOW(), ' ===') AS Info;
 
 SELECT 'Step 1: Creating KeepIds table...' AS Info;
 
-CREATE TEMPORARY TABLE IF NOT EXISTS KeepIds AS
+CREATE TEMPORARY TABLE KeepIds AS
 SELECT MIN(Id) AS Id
 FROM temperaturesensor
-GROUP BY YEAR(CaptureDate),
-         MONTH(CaptureDate),
-         DAY(CaptureDate),
-         HOUR(CaptureDate),
-         MINUTE(CaptureDate);
+GROUP BY DATE_FORMAT(CaptureDate, '%Y-%m-%d %H:%i');
 
--- Create the index (safe because table is temporary)
 CREATE INDEX idx_keep_id ON KeepIds(Id);
 
-SELECT 'Step 2: Deleting old records...' AS Info;
+SELECT CONCAT(NOW(), ': KeepIds table created') AS Info;
 
-DELETE FROM temperaturesensor
-WHERE Id IN (
-    SELECT Id
-    FROM (
-        SELECT t.Id
-        FROM temperaturesensor t
-        LEFT JOIN KeepIds k ON t.Id = k.Id
-        WHERE k.Id IS NULL
-        LIMIT 10000
-    ) AS batch
-);
+SELECT 'Step 2: Batch deleting old records...' AS Info;
 
-SELECT 'Step 3: Dropping KeepIds table...' AS Info;
+DELIMITER $$
 
-DROP TABLE IF EXISTS KeepIds;
+DROP PROCEDURE IF EXISTS trim_loop $$
 
-SELECT 'Trimming complete.' AS Info;
+CREATE PROCEDURE trim_loop()
+BEGIN
+    DECLARE rows_deleted INT DEFAULT 1;
+    DECLARE total_deleted BIGINT DEFAULT 0;
+
+    WHILE rows_deleted > 0 DO
+
+        DELETE FROM temperaturesensor
+        WHERE Id IN (
+            SELECT Id FROM (
+                SELECT t.Id
+                FROM temperaturesensor t
+                LEFT JOIN KeepIds k ON t.Id = k.Id
+                WHERE k.Id IS NULL
+                LIMIT 10000
+            ) AS batch
+        );
+
+        SET rows_deleted = ROW_COUNT();
+        SET total_deleted = total_deleted + rows_deleted;
+
+        SELECT CONCAT(
+            NOW(),
+            ' | Batch deleted: ',
+            rows_deleted,
+            ' | Total deleted: ',
+            total_deleted
+        ) AS Info;
+
+    END WHILE;
+
+    SELECT CONCAT(
+        NOW(),
+        ' | Finished. Total deleted: ',
+        total_deleted
+    ) AS Info;
+END $$
+
+DELIMITER ;
+
+CALL trim_loop();
+
+DROP PROCEDURE trim_loop;
+
+SELECT 'Step 3: Dropping temporary tables...' AS Info;
+
+DROP TEMPORARY TABLE IF EXISTS KeepIds;
+
+SELECT CONCAT('Trimming complete at ', NOW()) AS Info;

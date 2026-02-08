@@ -6,14 +6,14 @@ PASSWORD="<PLACEHOLDER>"
 DATABASE="<PLACEHOLDER>"
 LOGFILE="/home/pi/trim.log"
 
-echo "=== Trimming started at $(date) ===" >> "$LOGFILE"
+echo "=== Trimming started at $(date) ===" | tee -a "$LOGFILE"
 
-# Run SQL script with verbose for debugging
-mysql -u $USER -p$PASSWORD -v $DATABASE < /home/pi/trim_temperaturesensor.sql >> "$LOGFILE" 2>&1
+stdbuf -oL -eL mysql -u $USER -p$PASSWORD -v $DATABASE \
+  < /home/pi/trim_temperaturesensor.sql 2>&1 | tee -a "$LOGFILE"
 
 # Check exit status
 if [ $? -eq 0 ]; then
-    echo "Trimming completed successfully at $(date)" >> "$LOGFILE"
+    echo "Trimming completed successfully at $(date)" | tee -a "$LOGFILE"
 else
-    echo "ERROR: Trimming failed at $(date)" >> "$LOGFILE"
+    echo "ERROR: Trimming failed at $(date)" | tee -a "$LOGFILE"
 fi
